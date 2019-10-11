@@ -1,0 +1,94 @@
+# encoding:utf-8
+# !/usr/bin/env python
+from flask import Flask, render_template
+from flask_socketio import SocketIO
+import random
+import json
+from threading import Lock
+import pymysql
+
+async_mode = None
+app = Flask(__name__)
+app.config['SECRET_KEY'] = 'secret!'
+socketio = SocketIO(app)
+thread = None
+thread_lock = Lock()
+end = ""
+start = ""
+
+
+@app.route('/')
+def index():
+    return render_template('test.html', async_mode=socketio.async_mode)
+
+
+# server初始化连接，就给client listener随便发，然后client会触发事件
+@socketio.on('Start')
+def test_connect(dic):
+    global end
+    global start
+    print('receive the start button news')
+    for (k, v) in dic.items():
+        print(k + v)
+        if k == "end_point":
+            end = v
+        if k == 'start_point':
+            start = v
+        # print("start_point: "+dic[start_point])
+    # print("end_point: "+dic[end_point])
+    socketio.emit('ClientListener', {'data': "hhh"})
+
+
+# 发送回来的坐标进行处理,json1 json
+@socketio.on('ServerListener')
+def handle_xyz(json1):
+    # print('x,y,z: ' + str(json1))
+    dict_xyz = json.dumps(json1, encoding='utf-8', ensure_ascii=False)
+    print(dict_xyz)
+    # print(end + start)
+    # 此处进行NS3处理
+    # IP地址就这么解决了
+    ip_road_result = "192.168.0.1" + "," + "192.168.0.2" + "," + "192.168.0.3"
+    print('start' + start)
+    print('end' + end)
+    socketio.emit('ShowResult', {"ip": ip_road_result})
+
+
+@socketio.on('Login')
+def login(json_data):
+    print(json_data)
+    # database result true false
+    for (k, v) in json_data.items():
+        print(k + v)
+        if k == "username":
+            username = v
+        if k == 'password':
+            password = v
+    res = verify(username,password)
+    socketio.emit('ClientLoginResult', {"result": res})
+
+
+def verify(username, passwd):
+    # 连接database
+    conn = pymysql.connect("127.0.0.1", "root", "12345678", "user")
+    # 得到一个可以执行SQL语句的光标对象
+    cursor = conn.cursor()
+    sql = "SELECT * from users where username = %s and password = %s"
+    cursor.execute(sql, [username, passwd])
+    num = 0
+    for data in cursor.fetchall():
+        num = num + 1
+        print data
+    if num != 0:
+        print ('登陆成功')
+        result = "true"
+    else:
+        print ('用户名密码未找到')
+        result = "false"
+    cursor.close()
+    conn.close()
+    return result
+
+
+if __name__ == '__main__':
+    socketio.run(app, debug=True)
